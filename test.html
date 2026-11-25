@@ -98,7 +98,7 @@ button.sm{min-height:44px;font-size:16px;padding:0 16px}
     <div class="railtxt" id="railtxt"></div>
   </div>
 </header>
-<main class="band"><div class="wrap" id="page"></div><p style="text-align:center;color:var(--mute);font-size:13px;margin:0 0 20px">v5</p></main>
+<main class="band"><div class="wrap" id="page"></div><p style="text-align:center;color:var(--mute);font-size:13px;margin:0 0 20px">v6</p></main>
 
 <script>
 {
@@ -375,8 +375,8 @@ function summary(r){
   const line=f=>{const v=a[f.id];const s=f.o?lab(f,v):(v||'').trim();L.push(`${f.en}: ${s&&s.length?s:'—'}`)};
   L.push('ENGLISH PLACEMENT – RESULTS',`Completed: ${new Date().toLocaleString('en-GB')}`,'');
   L.push(`Estimated level (test): ${LVEN[r.lv]}`,`Self-assessed level: ${LVEN[r.self]}`);
-  const f=x=>x.n<x.t?`${x.c}/${x.n} (${x.t-x.n} skipped – no audio)`:`${x.c}/${x.t}`;
-  L.push(`Vocabulary ${f(r.S.voc)} · Grammar ${f(r.S.gr)} · Reading ${f(r.S.rd)} · Listening ${f(r.S.ls)}`);
+  const f=(x,arr)=>{const na=arr.filter(it=>st.a[it.id]===-2).length,ua=arr.filter(it=>st.a[it.id]===undefined).length;const notes=[];if(ua)notes.push(`${ua} unanswered`);if(na)notes.push(`${na} no audio`);return `${x.c}/${x.n}`+(notes.length?` (${notes.join(', ')})`:'')};
+  L.push(`Vocabulary ${f(r.S.voc,VOC)} · Grammar ${f(r.S.gr,GR)} · Reading ${f(r.S.rd,RD)} · Listening ${f(r.S.ls,LS)}`);
   L.push('By level: '+LV.map(l=>`${l} ${r.per[l].c}/${r.per[l].n}`).join(', '));
   const wrong=[...VOC,...GR,...RD,...LS].filter(it=>st.a[it.id]!==undefined&&st.a[it.id]!==it.c&&st.a[it.id]!==-2).map(it=>`${it.id}${st.a[it.id]===-1?" (didn't know)":''}`);
   L.push(`Missed items: ${wrong.join(', ')||'none'}`);
