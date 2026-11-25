@@ -232,7 +232,7 @@ function playClip(key,text,rate){
   try{speechSynthesis.cancel()}catch(e){}
   if(cur){cur.pause();cur=null}
   if(!src){say(text,rate);return}
-  const a=new Audio(src);a.preservesPitch=true;a.playbackRate=rate<0.85?0.75:1;cur=a;
+  const a=new Audio(blobUrl(src));a.setAttribute('playsinline','');a.preservesPitch=true;a.playbackRate=rate<0.85?0.75:1;cur=a;
   a.play().catch(()=>say(text,rate));
 }
 function say(text,rate){
@@ -242,6 +242,8 @@ try{speechSynthesis.getVoices();speechSynthesis.onvoiceschanged=()=>{bv=bestVoic
 
 /* ---------- recording ---------- */
 let mr=null,recIdx=-1,t0=0,tick=null,stream=null,errIdx=-1,errMsg='';
+const bcache={};
+function blobUrl(d){if(!d)return '';if(bcache[d])return bcache[d];try{const [m,b]=d.split(',');const mime=(m.match(/data:([^;]+)/)||[])[1]||'audio/mpeg';const bin=atob(b);const u=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)u[k]=bin.charCodeAt(k);return bcache[d]=URL.createObjectURL(new Blob([u],{type:mime}))}catch(e){return d}}
 const mmss=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
 function spCard(i){
   const s=SPK[i],r=rec[i],on=recIdx===i;
@@ -251,19 +253,21 @@ function spCard(i){
   else if(r)st2=`<span class="st done">${X(T.saved)} (${mmss(r.sec)})</span>`;
   return `<div class="sp${on?' recording':''}" id="sp${i}"><p class="en" lang="en">${i+1}. ${esc(s.en)}</p>${SR?`<p class="tr">${esc(s.sr)}</p>`:'<p class="tr"></p>'}
   <div class="play"><button class="sm" data-q2="${i}">${X(T.hear)}</button>${on?`<button class="go sm" data-stop="${i}">${X(T.stop)}</button>`:`<button class="go sm" data-rec="${i}" ${recIdx>=0?'disabled':''}>${r?X(T.rerec):X(T.rec)}</button>`}${st2}</div>
-  ${r&&!on?`<audio controls preload="metadata" src="${r.data}"></audio>`:''}</div>`;
+  ${r&&!on?`<audio controls playsinline preload="auto" src="${blobUrl(r.data)}"></audio>`:''}</div>`;
 }
 const redrawSp=()=>SPK.forEach((_,i)=>{const el=document.getElementById('sp'+i);if(el)el.outerHTML=spCard(i)});
 async function startRec(i){
   errIdx=-1;
   if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){errIdx=i;errMsg=X(T.nomic);redrawSp();return}
-  try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){errIdx=i;errMsg=X(T.denied);redrawSp();return}
+  try{if(navigator.audioSession)navigator.audioSession.type='play-and-record'}catch(e){}
+  const live=stream&&stream.getAudioTracks().some(t=>t.readyState==='live');
+  if(!live){try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){errIdx=i;errMsg=X(T.denied);redrawSp();return}}
   const mime=['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'].find(m=>MediaRecorder.isTypeSupported(m))||'';
   const chunks=[];
   try{mr=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:32000}:undefined)}catch(e){mr=new MediaRecorder(stream)}
   mr.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
   mr.onstop=()=>{
-    stream.getTracks().forEach(t=>t.stop());clearInterval(tick);
+    clearInterval(tick);
     const sec=Math.max(1,Math.round((Date.now()-t0)/1000));
     const b=new Blob(chunks,{type:mr.mimeType||mime||'audio/webm'});
     const fr=new FileReader();
@@ -274,6 +278,7 @@ async function startRec(i){
   tick=setInterval(()=>{const s=Math.round((Date.now()-t0)/1000);const el=document.getElementById('tm');if(el)el.textContent=`${X(T.recording)} ${mmss(s)}`;if(s>=150)stopRec()},500);
 }
 function stopRec(){try{if(mr&&mr.state!=='inactive')mr.stop()}catch(e){}}
+function releaseMic(){try{if(stream)stream.getTracks().forEach(t=>t.stop())}catch(e){}stream=null;try{if(navigator.audioSession)navigator.audioSession.type='auto'}catch(e){}}
 
 /* ---------- steps ---------- */
 const STEPS=[
@@ -293,6 +298,7 @@ const STEPS=[
 {n:['Ciljevi','Goals'],h:()=>`<h2>${SR?'Vaši ciljevi i vreme':'Your goals and time'}</h2><p class="lead">${SR?'Na kraju: šta želite da postignete i koliko vremena možete da odvojite.':'Finally: what you want to achieve and how much time you can give.'}</p>${GOALS.map(field).join('')}`,req:GOALS.filter(f=>f.t==='r').map(f=>f.id)},
 {n:['Rezultat','Result'],h:()=>result()}
 ];
+document.addEventListener('play',e=>{document.querySelectorAll('audio').forEach(a=>{if(a!==e.target)a.pause()});if(cur&&e.target!==cur){cur.pause();cur=null}},true);
 const SPEAK_STEP=STEPS.findIndex(s=>s.n[1]==='Speaking');
 
 function score(){
@@ -333,6 +339,7 @@ function resultsFile(r){
 <p class="lv">${r.lv}</p><p>${esc(LVEN[r.lv])} on the test · self-assessed ${esc(LVEN[r.self])}</p>
 <h2>Speaking – voice notes</h2>${clips}
 <h2>Full answers</h2><pre>${esc(summary(r))}</pre>
+<script>document.querySelectorAll('audio').forEach(a=>{try{const d=a.getAttribute('src');const [m,b]=d.split(',');const bin=atob(b);const u=new Uint8Array(bin.length);for(let k=0;k<bin.length;k++)u[k]=bin.charCodeAt(k);a.src=URL.createObjectURL(new Blob([u],{type:(m.match(/data:([^;]+)/)||[])[1]||'audio/mp4'}))}catch(e){}})<\/script>
 <script type="application/json" id="data">${JSON.stringify(data).replace(/</g,'\\u003c')}<\/script>
 </main></body></html>`;
 }
@@ -360,6 +367,7 @@ document.getElementById('h1').textContent=X(T.h1);
 document.getElementById('sub').textContent=X(T.sub);
 function render(){
   if(recIdx>=0)stopRec();
+  if(st.step!==SPEAK_STEP&&stream&&recIdx<0)releaseMic();
   const s=STEPS[st.step];
   document.getElementById('rail').innerHTML=STEPS.slice(1).map((x,i)=>`<li class="${i+1<st.step?'done':i+1===st.step?'now':''}" title="${X(x.n)}">${X(x.n)}</li>`).join('');
   document.getElementById('railtxt').textContent=st.step?`${X(T.step)} ${st.step} ${X(T.of)} ${STEPS.length-1} · ${X(s.n)}`:'';
