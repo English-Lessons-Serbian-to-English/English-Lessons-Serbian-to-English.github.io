@@ -98,7 +98,7 @@ button.sm{min-height:44px;font-size:16px;padding:0 16px}
     <div class="railtxt" id="railtxt"></div>
   </div>
 </header>
-<main class="band"><div class="wrap" id="page"></div></main>
+<main class="band"><div class="wrap" id="page"></div><p style="text-align:center;color:var(--mute);font-size:13px;margin:0 0 20px">v3</p></main>
 
 <script>
 {
@@ -259,26 +259,34 @@ const redrawSp=()=>SPK.forEach((_,i)=>{const el=document.getElementById('sp'+i);
 async function startRec(i){
   errIdx=-1;
   if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){errIdx=i;errMsg=X(T.nomic);redrawSp();return}
-  try{if(navigator.audioSession)navigator.audioSession.type='play-and-record'}catch(e){}
-  const live=stream&&stream.getAudioTracks().some(t=>t.readyState==='live');
-  if(!live){try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}})}catch(e){errIdx=i;errMsg=X(T.denied);redrawSp();return}}
+  const live=stream&&stream.getAudioTracks().some(t=>t.readyState==='live'&&!t.muted);
+  if(!live){
+    let err=null;stream=null;
+    for(const c of [{audio:true},{audio:{echoCancellation:true}}]){
+      try{stream=await navigator.mediaDevices.getUserMedia(c);break}catch(e){err=e}
+    }
+    if(!stream){errIdx=i;errMsg=(err&&err.name==='NotAllowedError'?X(T.denied):X(T.nomic))+` [${err?err.name:'?'}: ${err?err.message:''}]`;redrawSp();return}
+  }
   const mime=['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'].find(m=>MediaRecorder.isTypeSupported(m))||'';
   const chunks=[];
-  try{mr=new MediaRecorder(stream,mime?{mimeType:mime,audioBitsPerSecond:32000}:undefined)}catch(e){mr=new MediaRecorder(stream)}
+  try{mr=new MediaRecorder(stream,mime?{mimeType:mime}:undefined)}catch(e){try{mr=new MediaRecorder(stream)}catch(e2){errIdx=i;errMsg=X(T.nomic)+` [${e2.name}: ${e2.message}]`;redrawSp();return}}
+  mr.onerror=ev=>{errIdx=i;errMsg=`[${ev.error?ev.error.name:'recorder error'}]`;recIdx=-1;clearInterval(tick);redrawSp()};
   mr.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
   mr.onstop=()=>{
     clearInterval(tick);
     const sec=Math.max(1,Math.round((Date.now()-t0)/1000));
-    const b=new Blob(chunks,{type:mr.mimeType||mime||'audio/webm'});
+    const b=new Blob(chunks,{type:(mr.mimeType||mime||'audio/webm').split(';')[0]});
+    if(!b.size){errIdx=i;errMsg='[empty recording – please try again]';recIdx=-1;redrawSp();return}
     const fr=new FileReader();
     fr.onload=()=>{rec[i]={data:fr.result,sec,type:b.type};saveRec();recIdx=-1;redrawSp()};
     fr.readAsDataURL(b);
   };
-  mr.start(1000);t0=Date.now();recIdx=i;redrawSp();
+  try{mr.start()}catch(e){errIdx=i;errMsg=X(T.nomic)+` [${e.name}: ${e.message}]`;redrawSp();return}
+  t0=Date.now();recIdx=i;redrawSp();
   tick=setInterval(()=>{const s=Math.round((Date.now()-t0)/1000);const el=document.getElementById('tm');if(el)el.textContent=`${X(T.recording)} ${mmss(s)}`;if(s>=150)stopRec()},500);
 }
 function stopRec(){try{if(mr&&mr.state!=='inactive')mr.stop()}catch(e){}}
-function releaseMic(){try{if(stream)stream.getTracks().forEach(t=>t.stop())}catch(e){}stream=null;try{if(navigator.audioSession)navigator.audioSession.type='auto'}catch(e){}}
+function releaseMic(){try{if(stream)stream.getTracks().forEach(t=>t.stop())}catch(e){}stream=null}
 
 /* ---------- steps ---------- */
 const STEPS=[
@@ -286,7 +294,7 @@ const STEPS=[
 <div class="note"><b>Pre nego što počnete:</b><ul><li>Traje oko 20 minuta. Napredak se čuva, pa možete prekinuti i nastaviti kasnije.</li><li>Najbolje radi na <b>računaru, u pregledaču Chrome</b>, sa uključenim zvukom i mikrofonom.</li><li>Ne koristite prevodilac ni rečnik. Ovo nije ispit – iskreni odgovori daju najbolji plan.</li><li>Ako ne znate odgovor, slobodno izaberite <b>„Ne znam”</b>. To je potpuno u redu.</li><li>Na kraju kliknete „Sačuvaj rezultate” i pošaljete taj jedan fajl nazad.</li></ul></div>`
 :`<h2>Welcome</h2><p class="lead">This questionnaire helps us see how much English you already know and what you want to achieve. Based on your answers we build a learning programme that fits your time and your work.</p>
 <div class="note"><b>Before you start:</b><ul><li>It takes about 20 minutes. Progress is saved, so you can stop and continue later.</li><li>It works best on a <b>computer, in Chrome</b>, with sound and microphone on.</li><li>Don't use a translator or dictionary. This isn't an exam – honest answers give the best plan.</li><li>If you don't know an answer, just choose <b>"I don't know"</b>. That's completely fine.</li><li>At the end you click "Save results" and send that one file back.</li></ul></div>`},
-{n:['O Vama','About you'],h:()=>`<h2>${SR?'O Vama':'About you'}</h2><p class="lead">${SR?'Nekoliko osnovnih pitanja o Vama i Vašem iskustvu sa engleskim.':'A few basic questions about you and your experience with English.'}</p>${ABOUT.map(field).join('')}`,req:ABOUT.filter(f=>f.t==='r').map(f=>f.id)},
+{n:['O Vama','About you'],h:()=>`<h2>${SR?'O Vama':'About you'}</h2><p class="lead">${SR?'Nekoliko osnovnih pitanja o Vama i Vašem iskustvu sa engleskim.':'A few basic questions about you and your experience with English.'}</p>${ABOUT.map(field).join('')}`},
 {n:['Samoprocena','Self-check'],h:()=>`<h2>${SR?'Šta već možete?':'What can you already do?'}</h2><p class="lead">${SR?'Za svaku rečenicu izaberite šta najbolje opisuje Vaš engleski danas.':'For each sentence, choose what best describes your English today.'}</p>${CAN.map(canQ).join('')}`,req:CAN.map(c=>c.id)},
 {n:['Reči','Words'],h:()=>`<h2>${SR?'Reči':'Words'}</h2><p class="lead">${SR?'Šta znači ova engleska reč? Izaberite prevod.':'What does this English word mean? (In his version the options are Serbian words; here each shows an English meaning with the Serbian in brackets.)'}</p>${VOC.map(v=>test(v,1)).join('')}`,req:VOC.map(v=>v.id)},
 {n:['Gramatika','Grammar'],h:()=>`<h2>${SR?'Gramatika':'Grammar'}</h2><p class="lead">${SR?'Koja reč nedostaje u rečenici? Pitanja postaju sve teža – kada postane preteško, izaberite „Ne znam”.':'Which word is missing from the sentence? The questions get harder – when it becomes too hard, choose "I don\'t know".'}</p>${GR.map(g=>test(g,1)).join('')}`,req:GR.map(g=>g.id)},
